@@ -1,0 +1,200 @@
+// SHOPEE TERLARIS SCRAPER
+// Khusus untuk tab Terlaris (sortBy=sales)
+// Cara pakai:
+// 1. Buka URL: https://shopee.co.id/mayoraofficialstore?page=0&sortBy=sales&tab=0
+// 2. Tekan F12, buka tab Console
+// 3. Paste code ini dan tekan Enter
+
+(function() {
+    console.log("🔥 SHOPEE TERLARIS SCRAPER STARTED");
+    console.log("========================================");
+    
+    let productsData = [];
+    
+    function extractTerlarisProducts() {
+        console.log("🔍 Extracting TERLARIS products from current visible area...");
+        
+        // Validasi URL
+        if (!window.location.href.includes('sortBy=sales')) {
+            console.log("⚠ Warning: Anda tidak berada di tab Terlaris!");
+            console.log("Silakan buka URL: https://shopee.co.id/mayoraofficialstore?page=0&sortBy=sales&tab=0");
+        }
+        
+        // Berdasarkan struktur DOM yang sama
+        const productContainers = document.querySelectorAll('div');
+        const validProducts = [];
+        
+        productContainers.forEach(container => {
+            // Cek apakah container ini punya ketiga elemen yang kita butuhkan
+            const nameElement = container.querySelector('div.line-clamp-2.break-words.min-w-0');
+            const priceElement = container.querySelector('span.truncate.text-base\\/5.font-medium');
+            const soldElement = container.querySelector('div.truncate.text-shopee-black87.text-xs.min-h-4.flex-shrink');
+            
+            if (nameElement && priceElement && soldElement) {
+                validProducts.push({
+                    container: container,
+                    nameElement: nameElement,
+                    priceElement: priceElement,
+                    soldElement: soldElement
+                });
+            }
+        });
+        
+        console.log(Found ${validProducts.length} valid TERLARIS products with complete data);
+        
+        // Extract data dari setiap produk
+        validProducts.forEach((product, index) => {
+            try {
+                // Extract nama (remove image dan ambil text)
+                let name = product.nameElement.textContent.trim();
+                // Remove text dari img alt jika ada
+                const img = product.nameElement.querySelector('img');
+                if (img && img.alt) {
+                    name = name.replace(img.alt, '').trim();
+                }
+                
+                // Extract harga
+                const priceText = product.priceElement.textContent.trim();
+                const priceNumber = parseInt(priceText.replace(/\D/g, '')) || 0;
+                
+                // Extract terjual - khusus handle format Terlaris "757 Terjual/Bln"
+                const soldText = product.soldElement.textContent.trim();
+                let soldNumber = 0;
+                let salesType = "regular"; // track jenis penjualan
+                
+                if (soldText.toLowerCase().includes('terjual')) {
+                    // Parse berbagai format
+                    const soldMatch = soldText.match(/(\d+(?:[,\.]\d+)?)/);
+                    if (soldMatch) {
+                        let numStr = soldMatch[1].replace(',', '.');
+                        soldNumber = parseInt(parseFloat(numStr));
+                        
+                        // Handle "rb" (ribu) format
+                        if (soldText.toLowerCase().includes('rb')) {
+                            soldNumber *= 1000;
+                        }
+                        
+                        // Detect sales type
+                        if (soldText.includes('/Bln') || soldText.includes('/bln')) {
+                            salesType = "monthly";
+                        }
+                    }
+                }
+                
+                if (name && name.length > 5) {
+                    const productData = {
+                        index: index + 1,
+                        name: name,
+                        price: Rp ${priceNumber.toLocaleString()},
+                        price_number: priceNumber,
+                        sold_text: soldText,
+                        sold_count: soldNumber,
+                        sales_type: salesType // tambahan info untuk terlaris
+                    };
+                    
+                    productsData.push(productData);
+                    
+                    const salesInfo = salesType === "monthly" ? " (per bulan)" : "";
+                    console.log(🔥 TERLARIS ${index + 1}: ${name.substring(0, 30)}... | Rp ${priceNumber.toLocaleString()} | ${soldNumber} terjual${salesInfo});
+                }
+                
+            } catch (e) {
+                console.error(Error processing terlaris product ${index + 1}:, e);
+            }
+        });
+        
+        return productsData;
+    }
+    
+    function displayTerlarisResults() {
+        console.log("\n🔥 TERLARIS EXTRACTION COMPLETED!");
+        console.log("========================================");
+        console.log(Total TERLARIS products extracted: ${productsData.length});
+        
+        if (productsData.length > 0) {
+            console.log("\n📊 TERLARIS RESULTS:");
+            console.log("========================================");
+            
+            // Show all products dengan info sales type
+            productsData.forEach((product, index) => {
+                const salesInfo = product.sales_type === "monthly" ? " (Penjualan per bulan)" : "";
+                console.log(\n${product.index}. ${product.name});
+                console.log(`   💰 ${product.price}`);
+                console.log(`   🔥 ${product.sold_text}${salesInfo}`);
+            });
+            
+            // Generate CSV dengan kolom tambahan
+            const csvHeader = "Index,Name,Price,Price_Number,Sold_Text,Sold_Count,Sales_Type\n";
+            const csvRows = productsData.map(product => 
+                ${product.index},"${product.name.replace(/"/g, '""')}","${product.price}",${product.price_number},"${product.sold_text}",${product.sold_count},"${product.sales_type}"
+            ).join('\n');
+            
+            const csvContent = csvHeader + csvRows;
+            
+            console.log("\n💾 TERLARIS CSV DATA:");
+            console.log("========================================");
+            console.log(csvContent);
+            
+            // Store in global variable
+            window.shopeeTerlarisData = {
+                products: productsData,
+                csv: csvContent,
+                downloadCSV: function() {
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'shopee_terlaris_products.csv';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    console.log("🔥 TERLARIS CSV file downloaded!");
+                }
+            };
+            
+            console.log("\n🔧 TERLARIS COMMANDS:");
+            console.log("========================================");
+            console.log("window.shopeeTerlarisData.products - View TERLARIS JSON data");
+            console.log("window.shopeeTerlarisData.downloadCSV() - Download TERLARIS CSV file");
+            
+            // Summary statistics
+            const totalSales = productsData.reduce((sum, product) => sum + product.sold_count, 0);
+            const avgPrice = productsData.reduce((sum, product) => sum + product.price_number, 0) / productsData.length;
+            const monthlyProducts = productsData.filter(p => p.sales_type === "monthly").length;
+            
+            console.log("\n📈 TERLARIS STATISTICS:");
+            console.log("========================================");
+            console.log(Total products: ${productsData.length});
+            console.log(Products with monthly sales: ${monthlyProducts});
+            console.log(Total sales volume: ${totalSales.toLocaleString()});
+            console.log(Average price: Rp ${Math.round(avgPrice).toLocaleString()});
+            
+        } else {
+            console.log("❌ No TERLARIS products found. Make sure you're on the Terlaris tab.");
+            console.log("URL should contain: sortBy=sales");
+        }
+    }
+    
+    // Main execution untuk TERLARIS
+    function main() {
+        try {
+            // Check if we're on Shopee
+            if (!window.location.hostname.includes('shopee.co.id')) {
+                console.log("❌ Please run this script on shopee.co.id");
+                return;
+            }
+            
+            console.log("🔥 Extracting TERLARIS products...");
+            console.log(Current URL: ${window.location.href});
+            
+            // Extract products (now includes async scroll and display)
+            extractTerlarisProducts();
+            
+        } catch (error) {
+            console.error("❌ Error during TERLARIS extraction:", error);
+        }
+    }
+    
+    // Run the TERLARIS scraper
+    main();
+    
+})();
